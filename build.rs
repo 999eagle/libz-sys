@@ -43,22 +43,21 @@ fn main() {
     // the one already there.
     if !wants_asm && target.contains("android") {
         println!("cargo:rustc-link-lib=z");
-        return
+        return;
     }
 
     let mut cfg = cc::Build::new();
 
     // Whitelist a bunch of situations where we build unconditionally.
     //
-    // MSVC basically never has it preinstalled, MinGW picks up a bunch of weird
-    // paths we don't like, `want_static` may force us, cross compiling almost
-    // never has a prebuilt version, and musl is almost always static.
-    if wants_asm ||
-        target.contains("msvc") ||
-        target.contains("pc-windows-gnu") ||
-        want_static ||
-        target != host ||
-        target.contains("musl")
+    // MinGW picks up a bunch of weird paths we don't like, `want_static` may
+    // force us, cross compiling almost never has a prebuilt version, and musl
+    // is almost always static.
+    if wants_asm
+        || target.contains("pc-windows-gnu")
+        || want_static
+        || target != host
+        || target.contains("musl")
     {
         return build_zlib(&mut cfg, &target);
     }
@@ -69,7 +68,7 @@ fn main() {
     //
     // In any case test if zlib is actually installed and if so we link to it,
     // otherwise continue below to build things.
-    if zlib_installed(&mut cfg) {
+    if zlib_installed(&target) {
         println!("cargo:rustc-link-lib=z");
         return
     }
@@ -172,23 +171,18 @@ fn try_vcpkg() -> bool {
         Err(e) => {
             println!("note, vcpkg did not find zlib: {}", e);
             false
-        },
+        }
     }
 }
 
-fn zlib_installed(cfg: &mut cc::Build) -> bool {
-    let compiler = cfg.get_compiler();
-    let mut cmd = Command::new(compiler.path());
-    cmd.arg("src/smoke.c")
-        .arg("-o").arg("/dev/null")
-        .arg("-lz");
+fn zlib_installed(target: &str) -> bool {
+    let mut cfg = cc::Build::new();
+    cfg.file("src/smoke.c").object("z");
+    let result = if target.contains("msvc") {
+        cfg.try_compile("NUL")
+    } else {
+        cfg.try_compile("/dev/null")
+    };
 
-    println!("running {:?}", cmd);
-    if let Ok(status) = cmd.status() {
-        if status.success() {
-            return true
-        }
-    }
-
-    false
+    result.is_ok()
 }
